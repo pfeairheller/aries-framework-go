@@ -326,17 +326,23 @@ func (s *offerReceived) ExecuteInbound(md *metaData) (state, stateAction, error)
 		return &proposalSent{}, zeroAction, nil
 	}
 
-	var offer = OfferCredential{}
-	if err := md.Msg.Decode(&offer); err != nil {
-		return nil, nil, fmt.Errorf("decode: %w", err)
-	}
+	var credential *RequestCredential
 
-	// creates the state's action
-	action := func(messenger service.Messenger) error {
-		return messenger.ReplyTo(md.Msg.ID(), service.NewDIDCommMsgMap(RequestCredential{
+	if md.requestCredential != nil {
+		credential = md.requestCredential
+	} else {
+		var offer = OfferCredential{}
+		if err := md.Msg.Decode(&offer); err != nil {
+			return nil, nil, fmt.Errorf("decode: %w", err)
+		}
+		credential = &RequestCredential{
 			Type:           RequestCredentialMsgType,
 			RequestsAttach: offer.OffersAttach,
-		}))
+		}
+	}
+	// creates the state's action
+	action := func(messenger service.Messenger) error {
+		return messenger.ReplyTo(md.Msg.ID(), service.NewDIDCommMsgMap(*credential))
 	}
 
 	return &requestSent{}, action, nil
