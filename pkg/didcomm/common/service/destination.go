@@ -22,7 +22,8 @@ type Destination struct {
 }
 
 const (
-	didCommServiceType = "did-communication"
+	didCommServiceType   = "did-communication"
+	indyAgentServiceType = "IndyAgent"
 )
 
 // GetDestination constructs a Destination struct based on the given DID and parameters
@@ -41,9 +42,11 @@ func GetDestination(did string, vdr vdri.Registry) (*Destination, error) {
 func CreateDestination(didDoc *diddoc.Doc) (*Destination, error) {
 	didCommService, ok := diddoc.LookupService(didDoc, didCommServiceType)
 	if !ok {
-		return nil, fmt.Errorf("create destination: missing DID doc service")
+		didCommService, ok = diddoc.LookupService(didDoc, indyAgentServiceType)
+		if !ok {
+			return nil, fmt.Errorf("create destination: missing DID doc service")
+		}
 	}
-
 	if didCommService.ServiceEndpoint == "" {
 		return nil, fmt.Errorf("create destination: no service endpoint on didcomm service block in diddoc: %+v", didDoc)
 	}

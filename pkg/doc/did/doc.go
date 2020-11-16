@@ -102,18 +102,18 @@ func Parse(did string) (*DID, error) {
 
 // Doc DID Document definition.
 type Doc struct {
-	Context              []string
-	ID                   string
-	PublicKey            []PublicKey
-	Service              []Service
-	Authentication       []VerificationMethod
-	AssertionMethod      []VerificationMethod
-	CapabilityDelegation []VerificationMethod
-	CapabilityInvocation []VerificationMethod
-	KeyAgreement         []VerificationMethod
-	Created              *time.Time
-	Updated              *time.Time
-	Proof                []Proof
+	Context              []string             `json:"@context"`
+	ID                   string               `json:"id"`
+	PublicKey            []PublicKey          `json:"publicKey"`
+	Service              []Service            `json:"service"`
+	Authentication       []VerificationMethod `json:"authentication"`
+	AssertionMethod      []VerificationMethod `json:"assertionMethod"`
+	CapabilityDelegation []VerificationMethod `json:"capabilityDelegation"`
+	CapabilityInvocation []VerificationMethod `json:"capabilityInvocation"`
+	KeyAgreement         []VerificationMethod `json:"keyAgreement"`
+	Created              *time.Time           `json:"created"`
+	Updated              *time.Time           `json:"updated"`
+	Proof                []Proof              `json:"proof"`
 }
 
 // PublicKey DID doc public key.
