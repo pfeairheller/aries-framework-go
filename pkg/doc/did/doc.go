@@ -162,13 +162,13 @@ func (pk *PublicKey) JSONWebKey() *jose.JWK {
 
 // Service DID doc service.
 type Service struct {
-	ID              string
-	Type            string
-	Priority        uint
-	RecipientKeys   []string
-	RoutingKeys     []string
-	ServiceEndpoint string
-	Properties      map[string]interface{}
+	ID              string                 `json:"id"`
+	Type            string                 `json:"type"`
+	Priority        uint                   `json:"priority"`
+	RecipientKeys   []string               `json:"recipientKeys"`
+	RoutingKeys     []string               `json:"routingKeys"`
+	ServiceEndpoint string                 `json:"serviceEndpoint"`
+	Properties      map[string]interface{} `json:"properties"`
 }
 
 // VerificationRelationship defines a verification relationship between DID subject and a verification method.

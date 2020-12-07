@@ -27,5 +27,5 @@ type Invitation struct {
 	Goal      string        `json:"goal,omitempty"`
 	GoalCode  string        `json:"goal-code,omitempty"`
 	Service   []interface{} `json:"service"` // Service is an array of either DIDs or 'service' block entries.
-	Protocols []string      `json:"protocols"`
+	Protocols []string      `json:"handshake_protocols"`
 }

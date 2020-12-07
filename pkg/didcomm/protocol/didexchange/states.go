@@ -389,7 +389,7 @@ func (ctx *context) handleInboundInvitation(invitation *Invitation, thid string,
 
 func (ctx *context) handleInboundRequest(request *Request, options *options,
 	connRec *connectionstore.Record) (stateAction, *connectionstore.Record, error) {
-	requestDidDoc, err := ctx.resolveDidDocFromConnection(request.Connection)
+	requestDidDoc, err := ctx.resolveDidDocFromAttachment(request.DIDDoc)
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolve did doc from exchange request connection: %w", err)
 	}
@@ -417,7 +417,7 @@ func (ctx *context) handleInboundRequest(request *Request, options *options,
 		ConnectionSignature: encodedConnectionSignature,
 	}
 
-	connRec.TheirDID = request.Connection.DID
+	connRec.TheirDID = requestDidDoc.ID
 	connRec.MyDID = connection.DID
 	connRec.TheirLabel = request.Label
 
@@ -534,6 +534,26 @@ func (ctx *context) resolveDidDocFromConnection(conn *Connection) (*did.Doc, err
 
 	// store provided did document
 	err := ctx.vdriRegistry.Store(didDoc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to store provided did document: %w", err)
+	}
+
+	return didDoc, nil
+}
+
+func (ctx *context) resolveDidDocFromAttachment(attach decorator.AttachmentData) (*did.Doc, error) {
+	d, err := attach.Fetch()
+	if err != nil {
+		return nil, fmt.Errorf("extracting did_doc~attach data failed: %s", err)
+	}
+
+	didDoc, err := did.ParseDocument(d)
+	if err != nil {
+		return nil, fmt.Errorf("unmarshalling did_doc failed: %s", err)
+	}
+
+	// store provided did document
+	err = ctx.vdriRegistry.Store(didDoc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to store provided did document: %w", err)
 	}
