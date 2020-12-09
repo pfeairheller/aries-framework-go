@@ -346,21 +346,18 @@ func TestService_Handle_Invitee(t *testing.T) {
 	require.Equal(t, invitation.ID, connRecord.InvitationID)
 	require.Equal(t, invitation.RecipientKeys, connRecord.RecipientKeys)
 	require.Equal(t, invitation.ServiceEndpoint, connRecord.ServiceEndPoint)
-
-	c := &Connection{
-		DID:    newDidDoc.ID,
-		DIDDoc: newDidDoc,
-	}
-
-	connectionSignature, err := ctx.prepareConnectionSignature(c, invitation.ID)
+	didDocBytes, err := json.Marshal(newDidDoc)
+	require.NoError(t, err)
+	//todo 626
+	_, err = ctx.prepareSignedAttachment(didDocBytes, invitation.ID)
 	require.NoError(t, err)
 
 	// Bob replies with a Response
 	payloadBytes, err = json.Marshal(
 		&Response{
-			Type:                ResponseMsgType,
-			ID:                  randomString(),
-			ConnectionSignature: connectionSignature,
+			Type: ResponseMsgType,
+			ID:   randomString(),
+			// ConnectionSignature: connectionSignature,
 			Thread: &decorator.Thread{
 				ID: connRecord.ThreadID,
 			},

@@ -576,7 +576,7 @@ func TestCommand_AcceptInvitation(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			require.Fail(t, "tests are not validated")
 		}
-
+fmt.Println(cid)
 		jsonStr := fmt.Sprintf(`{"id":"%s"}`, cid)
 
 		var b bytes.Buffer

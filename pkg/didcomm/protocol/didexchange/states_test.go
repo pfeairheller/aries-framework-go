@@ -7,15 +7,12 @@ SPDX-License-Identifier: Apache-2.0
 package didexchange
 
 import (
-	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
 	"time"
 
-	"github.com/btcsuite/btcutil/base58"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
@@ -27,7 +24,6 @@ import (
 	diddoc "github.com/hyperledger/aries-framework-go/pkg/doc/did"
 	"github.com/hyperledger/aries-framework-go/pkg/framework/aries/api/vdri"
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
-	"github.com/hyperledger/aries-framework-go/pkg/kms/localkms"
 	mockcrypto "github.com/hyperledger/aries-framework-go/pkg/mock/crypto"
 	mockdispatcher "github.com/hyperledger/aries-framework-go/pkg/mock/didcomm/dispatcher"
 	"github.com/hyperledger/aries-framework-go/pkg/mock/didcomm/protocol"
@@ -579,260 +575,252 @@ func TestAbandonedState_Execute(t *testing.T) {
 	})
 }
 
-// completed is an end state.
-func TestCompletedState_Execute(t *testing.T) {
-	prov := getProvider(t)
-	customKMS := newKMS(t, prov.StoreProvider)
-	pubKey := newED25519Key(t, customKMS)
-	cStore, err := newConnectionStore(&prov)
+// // completed is an end state.
+// func TestCompletedState_Execute(t *testing.T) {
+// 	prov := getProvider(t)
+// 	customKMS := newKMS(t, prov.StoreProvider)
+// 	pubKey := newED25519Key(t, customKMS)
+// 	cStore, err := newConnectionStore(&prov)
 
-	require.NoError(t, err)
-	require.NotNil(t, cStore)
+// 	require.NoError(t, err)
+// 	require.NotNil(t, cStore)
 
-	ctx := &context{
-		crypto:          &tinkcrypto.Crypto{},
-		connectionStore: cStore,
-		kms:             customKMS,
-	}
-	newDIDDoc := createDIDDocWithKey(pubKey)
-	c := &Connection{
-		DID:    newDIDDoc.ID,
-		DIDDoc: newDIDDoc,
-	}
-	invitation, err := createMockInvitation(pubKey, ctx)
-	require.NoError(t, err)
-	connectionSignature, err := ctx.prepareConnectionSignature(c, invitation.ID)
-	require.NoError(t, err)
+// 	ctx := &context{
+// 		crypto:          &tinkcrypto.Crypto{},
+// 		connectionStore: cStore,
+// 		kms:             customKMS,
+// 	}
+// 	newDIDDoc := createDIDDocWithKey(pubKey)
+// 	invitation, err := createMockInvitation(pubKey, ctx)
+// 	require.NoError(t, err)
+// 	connectionSignature, err := ctx.prepareSignedAttachment(newDIDDoc, invitation.ID)
+// 	require.NoError(t, err)
 
-	response := &Response{
-		Type:                ResponseMsgType,
-		ID:                  randomString(),
-		ConnectionSignature: connectionSignature,
-		Thread: &decorator.Thread{
-			ID: "test",
-		},
-	}
-	responsePayloadBytes, err := json.Marshal(response)
-	require.NoError(t, err)
+// 	response := &Response{
+// 		Type:                ResponseMsgType,
+// 		ID:                  randomString(),
+// 		ConnectionSignature: connectionSignature,
+// 		Thread: &decorator.Thread{
+// 			ID: "test",
+// 		},
+// 	}
+// 	responsePayloadBytes, err := json.Marshal(response)
+// 	require.NoError(t, err)
 
-	t.Run("no followup for inbound responses", func(t *testing.T) {
-		connRec := &connection.Record{
-			State:         (&responded{}).Name(),
-			ThreadID:      response.Thread.ID,
-			ConnectionID:  "123",
-			MyDID:         "did:peer:123456789abcdefghi#inbox",
-			Namespace:     myNSPrefix,
-			InvitationID:  invitation.ID,
-			RecipientKeys: []string{pubKey},
-		}
-		err = ctx.connectionStore.saveConnectionRecordWithMapping(connRec)
-		require.NoError(t, err)
-		ctx.vdriRegistry = &mockvdri.MockVDRIRegistry{ResolveValue: mockdiddoc.GetMockDIDDoc()}
-		require.NoError(t, err)
-		_, followup, _, e := (&completed{}).ExecuteInbound(&stateMachineMsg{
-			DIDCommMsg: bytesToDIDCommMsg(t, responsePayloadBytes),
-			connRecord: connRec,
-		}, "", ctx)
-		require.NoError(t, e)
-		require.IsType(t, &noOp{}, followup)
-	})
-	t.Run("no followup for inbound acks", func(t *testing.T) {
-		connRec := &connection.Record{
-			State:         (&responded{}).Name(),
-			ThreadID:      response.Thread.ID,
-			ConnectionID:  "123",
-			RecipientKeys: []string{pubKey},
-		}
-		err = ctx.connectionStore.saveConnectionRecord(connRec)
-		require.NoError(t, err)
-		err = ctx.connectionStore.SaveNamespaceThreadID(response.Thread.ID, findNamespace(AckMsgType), connRec.ConnectionID)
-		require.NoError(t, err)
-		ack := &model.Ack{
-			Type:   AckMsgType,
-			ID:     randomString(),
-			Status: ackStatusOK,
-			Thread: &decorator.Thread{
-				ID: response.Thread.ID,
-			}}
-		ackPayloadBytes, e := json.Marshal(ack)
-		require.NoError(t, e)
-		_, followup, _, e := (&completed{}).ExecuteInbound(&stateMachineMsg{
-			DIDCommMsg: bytesToDIDCommMsg(t, ackPayloadBytes),
-		}, "", ctx)
-		require.NoError(t, e)
-		require.IsType(t, &noOp{}, followup)
-	})
-	t.Run("rejects messages other than responses and acks", func(t *testing.T) {
-		others := []service.DIDCommMsg{
-			service.NewDIDCommMsgMap(Invitation{Type: InvitationMsgType}),
-			service.NewDIDCommMsgMap(Request{Type: RequestMsgType}),
-		}
+// 	t.Run("no followup for inbound responses", func(t *testing.T) {
+// 		connRec := &connection.Record{
+// 			State:         (&responded{}).Name(),
+// 			ThreadID:      response.Thread.ID,
+// 			ConnectionID:  "123",
+// 			MyDID:         "did:peer:123456789abcdefghi#inbox",
+// 			Namespace:     myNSPrefix,
+// 			InvitationID:  invitation.ID,
+// 			RecipientKeys: []string{pubKey},
+// 		}
+// 		err = ctx.connectionStore.saveConnectionRecordWithMapping(connRec)
+// 		require.NoError(t, err)
+// 		ctx.vdriRegistry = &mockvdri.MockVDRIRegistry{ResolveValue: mockdiddoc.GetMockDIDDoc()}
+// 		require.NoError(t, err)
+// 		_, followup, _, e := (&completed{}).ExecuteInbound(&stateMachineMsg{
+// 			DIDCommMsg: bytesToDIDCommMsg(t, responsePayloadBytes),
+// 			connRecord: connRec,
+// 		}, "", ctx)
+// 		require.NoError(t, e)
+// 		require.IsType(t, &noOp{}, followup)
+// 	})
+// 	t.Run("no followup for inbound acks", func(t *testing.T) {
+// 		connRec := &connection.Record{
+// 			State:         (&responded{}).Name(),
+// 			ThreadID:      response.Thread.ID,
+// 			ConnectionID:  "123",
+// 			RecipientKeys: []string{pubKey},
+// 		}
+// 		err = ctx.connectionStore.saveConnectionRecord(connRec)
+// 		require.NoError(t, err)
+// 		err = ctx.connectionStore.SaveNamespaceThreadID(response.Thread.ID, findNamespace(AckMsgType), connRec.ConnectionID)
+// 		require.NoError(t, err)
+// 		ack := &model.Ack{
+// 			Type:   AckMsgType,
+// 			ID:     randomString(),
+// 			Status: ackStatusOK,
+// 			Thread: &decorator.Thread{
+// 				ID: response.Thread.ID,
+// 			}}
+// 		ackPayloadBytes, e := json.Marshal(ack)
+// 		require.NoError(t, e)
+// 		_, followup, _, e := (&completed{}).ExecuteInbound(&stateMachineMsg{
+// 			DIDCommMsg: bytesToDIDCommMsg(t, ackPayloadBytes),
+// 		}, "", ctx)
+// 		require.NoError(t, e)
+// 		require.IsType(t, &noOp{}, followup)
+// 	})
+// 	t.Run("rejects messages other than responses and acks", func(t *testing.T) {
+// 		others := []service.DIDCommMsg{
+// 			service.NewDIDCommMsgMap(Invitation{Type: InvitationMsgType}),
+// 			service.NewDIDCommMsgMap(Request{Type: RequestMsgType}),
+// 		}
 
-		for _, msg := range others {
-			_, _, _, err = (&completed{}).ExecuteInbound(&stateMachineMsg{
-				DIDCommMsg: msg}, "", &context{})
-			require.Error(t, err)
-			require.Contains(t, err.Error(), "illegal msg type")
-		}
-	})
-	t.Run("no followup for inbound responses unmarshalling error", func(t *testing.T) {
-		_, followup, _, err := (&completed{}).ExecuteInbound(&stateMachineMsg{
-			DIDCommMsg: service.DIDCommMsgMap{"@id": map[int]int{}, "@type": ResponseMsgType},
-		}, "", &context{})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "JSON unmarshalling of response")
-		require.Nil(t, followup)
-	})
-	t.Run("execute inbound handle inbound response  error", func(t *testing.T) {
-		response.ConnectionSignature = &ConnectionSignature{}
-		responsePayloadBytes, err := json.Marshal(response)
-		require.NoError(t, err)
-		_, followup, _, err := (&completed{}).ExecuteInbound(&stateMachineMsg{
-			DIDCommMsg: bytesToDIDCommMsg(t, responsePayloadBytes),
-		}, "", ctx)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "handle inbound response")
-		require.Nil(t, followup)
-	})
-}
+// 		for _, msg := range others {
+// 			_, _, _, err = (&completed{}).ExecuteInbound(&stateMachineMsg{
+// 				DIDCommMsg: msg}, "", &context{})
+// 			require.Error(t, err)
+// 			require.Contains(t, err.Error(), "illegal msg type")
+// 		}
+// 	})
+// 	t.Run("no followup for inbound responses unmarshalling error", func(t *testing.T) {
+// 		_, followup, _, err := (&completed{}).ExecuteInbound(&stateMachineMsg{
+// 			DIDCommMsg: service.DIDCommMsgMap{"@id": map[int]int{}, "@type": ResponseMsgType},
+// 		}, "", &context{})
+// 		require.Error(t, err)
+// 		require.Contains(t, err.Error(), "JSON unmarshalling of response")
+// 		require.Nil(t, followup)
+// 	})
+// 	t.Run("execute inbound handle inbound response  error", func(t *testing.T) {
+// 		response.ConnectionSignature = &ConnectionSignature{}
+// 		responsePayloadBytes, err := json.Marshal(response)
+// 		require.NoError(t, err)
+// 		_, followup, _, err := (&completed{}).ExecuteInbound(&stateMachineMsg{
+// 			DIDCommMsg: bytesToDIDCommMsg(t, responsePayloadBytes),
+// 		}, "", ctx)
+// 		require.Error(t, err)
+// 		require.Contains(t, err.Error(), "handle inbound response")
+// 		require.Nil(t, followup)
+// 	})
+// }
 
-func TestVerifySignature(t *testing.T) {
-	prov := getProvider(t)
-	pubKey := newED25519Key(t, prov.KMS())
-	cStore, err := newConnectionStore(&prov)
+// func TestVerifySignature(t *testing.T) {
+// 	prov := getProvider(t)
+// 	pubKey := newED25519Key(t, prov.KMS())
+// 	cStore, err := newConnectionStore(&prov)
 
-	require.NoError(t, err)
-	require.NotNil(t, cStore)
+// 	require.NoError(t, err)
+// 	require.NotNil(t, cStore)
 
-	ctx := &context{
-		crypto:          &tinkcrypto.Crypto{},
-		connectionStore: cStore,
-		kms:             prov.KMS(),
-	}
-	newDIDDoc := createDIDDocWithKey(pubKey)
-	c := &Connection{
-		DID:    newDIDDoc.ID,
-		DIDDoc: newDIDDoc,
-	}
-	invitation, err := createMockInvitation(pubKey, ctx)
-	require.NoError(t, err)
+// 	ctx := &context{
+// 		crypto:          &tinkcrypto.Crypto{},
+// 		connectionStore: cStore,
+// 		kms:             prov.KMS(),
+// 	}
+// 	newDIDDoc := createDIDDocWithKey(pubKey)
+// 	invitation, err := createMockInvitation(pubKey, ctx)
+// 	require.NoError(t, err)
 
-	t.Run("signature verified", func(t *testing.T) {
-		connectionSignature, err := ctx.prepareConnectionSignature(c, invitation.ID)
-		require.NoError(t, err)
-		con, err := verifySignature(connectionSignature, invitation.RecipientKeys[0])
-		require.NoError(t, err)
-		require.NotNil(t, con)
-		require.Equal(t, newDIDDoc.ID, con.DID)
-	})
-	t.Run("missing/invalid signature data", func(t *testing.T) {
-		con, err := verifySignature(&ConnectionSignature{}, invitation.RecipientKeys[0])
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "missing or invalid signature data")
-		require.Nil(t, con)
-	})
-	t.Run("decode signature data error", func(t *testing.T) {
-		connectionSignature, err := ctx.prepareConnectionSignature(c, invitation.ID)
-		require.NoError(t, err)
+// 	t.Run("signature verified", func(t *testing.T) {
+// 		connectionSignature, err := ctx.prepareSignedAttachment(newDIDDoc, invitation.ID)
+// 		require.NoError(t, err)
+// 		con, err := verifySignature(connectionSignature, invitation.RecipientKeys[0])
+// 		require.NoError(t, err)
+// 		require.NotNil(t, con)
+// 		require.Equal(t, newDIDDoc.ID, con.DID)
+// 	})
+// 	t.Run("missing/invalid signature data", func(t *testing.T) {
+// 		con, err := verifySignature(&ConnectionSignature{}, invitation.RecipientKeys[0])
+// 		require.Error(t, err)
+// 		require.Contains(t, err.Error(), "missing or invalid signature data")
+// 		require.Nil(t, con)
+// 	})
+// 	t.Run("decode signature data error", func(t *testing.T) {
+// 		connectionSignature, err := ctx.prepareSignedAttachment(newDIDDoc, invitation.ID)
+// 		require.NoError(t, err)
 
-		connectionSignature.SignedData = "invalid-signed-data"
-		con, err := verifySignature(connectionSignature, "")
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "decode signature data: illegal base64 data")
-		require.Nil(t, con)
-	})
-	t.Run("decode signature error", func(t *testing.T) {
-		connectionSignature, err := ctx.prepareConnectionSignature(c, invitation.ID)
-		require.NoError(t, err)
+// 		connectionSignature.SignedData = "invalid-signed-data"
+// 		con, err := verifySignature(connectionSignature, "")
+// 		require.Error(t, err)
+// 		require.Contains(t, err.Error(), "decode signature data: illegal base64 data")
+// 		require.Nil(t, con)
+// 	})
+// 	t.Run("decode signature error", func(t *testing.T) {
+// 		connectionSignature, err := ctx.prepareSignedAttachment(newDIDDoc, invitation.ID)
+// 		require.NoError(t, err)
 
-		connectionSignature.Signature = "invalid-signature"
-		con, err := verifySignature(connectionSignature, "")
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "decode signature: illegal base64 data")
-		require.Nil(t, con)
-	})
-	t.Run("decode verification key error ", func(t *testing.T) {
-		connectionSignature, err := ctx.prepareConnectionSignature(c, invitation.ID)
-		require.NoError(t, err)
+// 		connectionSignature.Signature = "invalid-signature"
+// 		con, err := verifySignature(connectionSignature, "")
+// 		require.Error(t, err)
+// 		require.Contains(t, err.Error(), "decode signature: illegal base64 data")
+// 		require.Nil(t, con)
+// 	})
+// 	t.Run("decode verification key error ", func(t *testing.T) {
+// 		connectionSignature, err := ctx.prepareSignedAttachment(newDIDDoc, invitation.ID)
+// 		require.NoError(t, err)
 
-		con, err := verifySignature(connectionSignature, "invalid-key")
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "verify signature: ed25519: invalid key")
-		require.Nil(t, con)
-	})
-	t.Run("verify signature error", func(t *testing.T) {
-		connectionSignature, err := ctx.prepareConnectionSignature(c, invitation.ID)
-		require.NoError(t, err)
+// 		con, err := verifySignature(connectionSignature, "invalid-key")
+// 		require.Error(t, err)
+// 		require.Contains(t, err.Error(), "verify signature: ed25519: invalid key")
+// 		require.Nil(t, con)
+// 	})
+// 	t.Run("verify signature error", func(t *testing.T) {
+// 		connectionSignature, err := ctx.prepareSignedAttachment(newDIDDoc, invitation.ID)
+// 		require.NoError(t, err)
 
-		// generate different key and assign it to signature verification key
-		pubKey2 := newED25519Key(t, prov.CustomKMS)
-		con, err := verifySignature(connectionSignature, pubKey2)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "ed25519: invalid signature")
-		require.Nil(t, con)
-	})
-	t.Run("connection unmarshal error", func(t *testing.T) {
-		connAttributeBytes := []byte("{hello world}")
+// 		// generate different key and assign it to signature verification key
+// 		pubKey2 := newED25519Key(t, prov.CustomKMS)
+// 		con, err := verifySignature(connectionSignature, pubKey2)
+// 		require.Error(t, err)
+// 		require.Contains(t, err.Error(), "ed25519: invalid signature")
+// 		require.Nil(t, con)
+// 	})
+// 	t.Run("connection unmarshal error", func(t *testing.T) {
+// 		connAttributeBytes := []byte("{hello world}")
 
-		now := getEpochTime()
-		timestampBuf := make([]byte, timestamplen)
-		binary.BigEndian.PutUint64(timestampBuf, uint64(now))
-		concatenateSignData := append(timestampBuf, connAttributeBytes...)
+// 		now := getEpochTime()
+// 		timestampBuf := make([]byte, timestamplen)
+// 		binary.BigEndian.PutUint64(timestampBuf, uint64(now))
+// 		concatenateSignData := append(timestampBuf, connAttributeBytes...)
 
-		// simulate kid generation from public signature verification key bytes
-		kid, err := localkms.CreateKID(base58.Decode(pubKey), kms.ED25519)
-		require.NoError(t, err)
+// 		// simulate kid generation from public signature verification key bytes
+// 		kid, err := localkms.CreateKID(base58.Decode(pubKey), kms.ED25519)
+// 		require.NoError(t, err)
 
-		kh, err := prov.KMS().Get(kid)
-		require.NoError(t, err)
+// 		kh, err := prov.KMS().Get(kid)
+// 		require.NoError(t, err)
 
-		// now sign with read signing keyset handle
-		signature, err := ctx.crypto.Sign(concatenateSignData, kh)
-		require.NoError(t, err)
+// 		// now sign with read signing keyset handle
+// 		signature, err := ctx.crypto.Sign(concatenateSignData, kh)
+// 		require.NoError(t, err)
 
-		cs := &ConnectionSignature{
-			Type:       "https://didcomm.org/signature/1.0/ed25519Sha512_single",
-			SignedData: base64.URLEncoding.EncodeToString(concatenateSignData),
-			SignVerKey: base64.URLEncoding.EncodeToString(base58.Decode(pubKey)),
-			Signature:  base64.URLEncoding.EncodeToString(signature),
-		}
+// 		cs := &ConnectionSignature{
+// 			Type:       "https://didcomm.org/signature/1.0/ed25519Sha512_single",
+// 			SignedData: base64.URLEncoding.EncodeToString(concatenateSignData),
+// 			SignVerKey: base64.URLEncoding.EncodeToString(base58.Decode(pubKey)),
+// 			Signature:  base64.URLEncoding.EncodeToString(signature),
+// 		}
 
-		con, err := verifySignature(cs, invitation.RecipientKeys[0])
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "JSON unmarshalling of connection")
-		require.Nil(t, con)
-	})
-	t.Run("missing connection attribute bytes", func(t *testing.T) {
-		now := getEpochTime()
-		timestampBuf := make([]byte, timestamplen)
-		binary.BigEndian.PutUint64(timestampBuf, uint64(now))
+// 		con, err := verifySignature(cs, invitation.RecipientKeys[0])
+// 		require.Error(t, err)
+// 		require.Contains(t, err.Error(), "JSON unmarshalling of connection")
+// 		require.Nil(t, con)
+// 	})
+// 	t.Run("missing connection attribute bytes", func(t *testing.T) {
+// 		now := getEpochTime()
+// 		timestampBuf := make([]byte, timestamplen)
+// 		binary.BigEndian.PutUint64(timestampBuf, uint64(now))
 
-		// simulate kid generation from public signature verification key bytes
-		kid, err := localkms.CreateKID(base58.Decode(pubKey), kms.ED25519)
-		require.NoError(t, err)
+// 		// simulate kid generation from public signature verification key bytes
+// 		kid, err := localkms.CreateKID(base58.Decode(pubKey), kms.ED25519)
+// 		require.NoError(t, err)
 
-		kh, err := prov.KMS().Get(kid)
-		require.NoError(t, err)
+// 		kh, err := prov.KMS().Get(kid)
+// 		require.NoError(t, err)
 
-		// now sign with read signing keyset handle
-		signature, err := ctx.crypto.Sign(timestampBuf, kh)
-		require.NoError(t, err)
+// 		// now sign with read signing keyset handle
+// 		signature, err := ctx.crypto.Sign(timestampBuf, kh)
+// 		require.NoError(t, err)
 
-		cs := &ConnectionSignature{
-			Type:       "https://didcomm.org/signature/1.0/ed25519Sha512_single",
-			SignedData: base64.URLEncoding.EncodeToString(timestampBuf),
-			SignVerKey: base64.URLEncoding.EncodeToString(base58.Decode(pubKey)),
-			Signature:  base64.URLEncoding.EncodeToString(signature),
-		}
+// 		cs := &ConnectionSignature{
+// 			Type:       "https://didcomm.org/signature/1.0/ed25519Sha512_single",
+// 			SignedData: base64.URLEncoding.EncodeToString(timestampBuf),
+// 			SignVerKey: base64.URLEncoding.EncodeToString(base58.Decode(pubKey)),
+// 			Signature:  base64.URLEncoding.EncodeToString(signature),
+// 		}
 
-		con, err := verifySignature(cs, invitation.RecipientKeys[0])
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "missing connection attribute bytes")
-		require.Nil(t, con)
-	})
-}
+// 		con, err := verifySignature(cs, invitation.RecipientKeys[0])
+// 		require.Error(t, err)
+// 		require.Contains(t, err.Error(), "missing connection attribute bytes")
+// 		require.Nil(t, con)
+// 	})
+// }
 
-func TestPrepareConnectionSignature(t *testing.T) {
+func TestPrepareSignedAttachment(t *testing.T) {
 	prov := getProvider(t)
 	pubKey := newED25519Key(t, prov.CustomKMS)
 	ctx := getContext(t, &prov)
@@ -841,82 +829,83 @@ func TestPrepareConnectionSignature(t *testing.T) {
 	newDidDoc, err := ctx.vdriRegistry.Create(testMethod)
 	require.NoError(t, err)
 
-	c := &Connection{
-		DID:    newDidDoc.ID,
-		DIDDoc: newDidDoc,
-	}
+	t.Run("prepare signed attachment", func(t *testing.T) {
+		didDocBytes, err := json.Marshal(newDidDoc)
+		require.NoError(t, err)
+		signedAttachment, err := ctx.prepareSignedAttachment(didDocBytes, invitation.ID)
+		require.NoError(t, err)
+		fmt.Println(signedAttachment)
 
-	t.Run("prepare connection signature", func(t *testing.T) {
-		connectionSignature, err := ctx.prepareConnectionSignature(c, invitation.ID)
-		require.NoError(t, err)
-		require.NotNil(t, connectionSignature)
-		sigData, err := base64.URLEncoding.DecodeString(connectionSignature.SignedData)
-		require.NoError(t, err)
-		connBytes := sigData[timestamplen:]
-		sigDataConnection := &Connection{}
-		err = json.Unmarshal(connBytes, sigDataConnection)
-		require.NoError(t, err)
-		require.Equal(t, c.DID, sigDataConnection.DID)
+		s, _ := json.MarshalIndent(signedAttachment, " ", " ")
+		fmt.Println(string(s))
+		// require.NotNil(t, connectionSignature)
+		// sigData, err := base64.URLEncoding.DecodeString(connectionSignature.SignedData)
+		// require.NoError(t, err)
+		// connBytes := sigData[timestamplen:]
+		// sigDataConnection := &Connection{}
+		// err = json.Unmarshal(connBytes, sigDataConnection)
+		// require.NoError(t, err)
+		// require.Equal(t, c.DID, sigDataConnection.DID)
 	})
-	t.Run("implicit invitation with DID - success", func(t *testing.T) {
-		cStore, err := newConnectionStore(&prov)
-		require.NoError(t, err)
-		require.NotNil(t, cStore)
+	// 	t.Run("implicit invitation with DID - success", func(t *testing.T) {
+	// 		cStore, err := newConnectionStore(&prov)
+	// 		require.NoError(t, err)
+	// 		require.NotNil(t, cStore)
 
-		ctx2 := &context{outboundDispatcher: prov.OutboundDispatcher(),
-			vdriRegistry:    &mockvdri.MockVDRIRegistry{ResolveValue: newDidDoc},
-			crypto:          &tinkcrypto.Crypto{},
-			connectionStore: cStore,
-			kms:             prov.CustomKMS,
-		}
-		connectionSignature, err := ctx2.prepareConnectionSignature(c, newDidDoc.ID)
-		require.NoError(t, err)
-		require.NotNil(t, connectionSignature)
-		sigData, err := base64.URLEncoding.DecodeString(connectionSignature.SignedData)
-		require.NoError(t, err)
-		connBytes := sigData[timestamplen:]
-		sigDataConnection := &Connection{}
-		err = json.Unmarshal(connBytes, sigDataConnection)
-		require.NoError(t, err)
-		require.Equal(t, c.DID, sigDataConnection.DID)
-	})
-	t.Run("prepare connection signature get invitation", func(t *testing.T) {
-		connectionSignature, err := ctx.prepareConnectionSignature(c, "test")
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "get invitation for signature: data not found")
-		require.Nil(t, connectionSignature)
-	})
-	t.Run("prepare connection signature get invitation", func(t *testing.T) {
-		inv := &Invitation{
-			Type: InvitationMsgType,
-			ID:   randomString(),
-			DID:  "test",
-		}
-		err := ctx.connectionStore.SaveInvitation(invitation.ID, invitation)
-		require.NoError(t, err)
-		connectionSignature, err := ctx.prepareConnectionSignature(c, inv.ID)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "get invitation for signature: data not found")
-		require.Nil(t, connectionSignature)
-	})
-	t.Run("prepare connection signature error", func(t *testing.T) {
-		cStore, err := newConnectionStore(&prov)
-		require.NoError(t, err)
-		require.NotNil(t, cStore)
+	// 		ctx2 := &context{outboundDispatcher: prov.OutboundDispatcher(),
+	// 			vdriRegistry:    &mockvdri.MockVDRIRegistry{ResolveValue: newDidDoc},
+	// 			crypto:          &tinkcrypto.Crypto{},
+	// 			connectionStore: cStore,
+	// 			kms:             prov.CustomKMS,
+	// 		}
+	// 		connectionSignature, err := ctx2.prepareSignedAttachment(c, newDidDoc.ID)
+	// 		require.NoError(t, err)
+	// 		require.NotNil(t, connectionSignature)
+	// 		sigData, err := base64.URLEncoding.DecodeString(connectionSignature.SignedData)
+	// 		require.NoError(t, err)
+	// 		connBytes := sigData[timestamplen:]
+	// 		sigDataConnection := &Connection{}
+	// 		err = json.Unmarshal(connBytes, sigDataConnection)
+	// 		require.NoError(t, err)
+	// 		require.Equal(t, c.DID, sigDataConnection.DID)
+	// 	})
+	// 	t.Run("prepare connection signature get invitation", func(t *testing.T) {
+	// 		connectionSignature, err := ctx.prepareSignedAttachment(c, "test")
+	// 		require.Error(t, err)
+	// 		require.Contains(t, err.Error(), "get invitation for signature: data not found")
+	// 		require.Nil(t, connectionSignature)
+	// 	})
+	// 	t.Run("prepare connection signature get invitation", func(t *testing.T) {
+	// 		inv := &Invitation{
+	// 			Type: InvitationMsgType,
+	// 			ID:   randomString(),
+	// 			DID:  "test",
+	// 		}
+	// 		err := ctx.connectionStore.SaveInvitation(invitation.ID, invitation)
+	// 		require.NoError(t, err)
+	// 		connectionSignature, err := ctx.prepareSignedAttachment(c, inv.ID)
+	// 		require.Error(t, err)
+	// 		require.Contains(t, err.Error(), "get invitation for signature: data not found")
+	// 		require.Nil(t, connectionSignature)
+	// 	})
+	// 	t.Run("prepare connection signature error", func(t *testing.T) {
+	// 		cStore, err := newConnectionStore(&prov)
+	// 		require.NoError(t, err)
+	// 		require.NotNil(t, cStore)
 
-		ctx := &context{crypto: &mockcrypto.Crypto{
-			SignErr: errors.New("sign error")},
-			connectionStore: cStore,
-			kms:             prov.KMS(),
-		}
-		c := &Connection{
-			DIDDoc: mockdiddoc.GetMockDIDDoc(),
-		}
-		connectionSignature, err := ctx.prepareConnectionSignature(c, invitation.ID)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "sign error")
-		require.Nil(t, connectionSignature)
-	})
+	// 		ctx := &context{crypto: &mockcrypto.Crypto{
+	// 			SignErr: errors.New("sign error")},
+	// 			connectionStore: cStore,
+	// 			kms:             prov.KMS(),
+	// 		}
+	// 		c := &Connection{
+	// 			DIDDoc: mockdiddoc.GetMockDIDDoc(),
+	// 		}
+	// 		connectionSignature, err := ctx.prepareSignedAttachment(c, invitation.ID)
+	// 		require.Error(t, err)
+	// 		require.Contains(t, err.Error(), "sign error")
+	// 		require.Nil(t, connectionSignature)
+	// 	})
 }
 
 func TestNewRequestFromInvitation(t *testing.T) {
@@ -1116,7 +1105,7 @@ func TestGetPublicKey(t *testing.T) {
 	})
 }
 
-func TestGetDIDDocAndConnection(t *testing.T) {
+func TestGetDIDDoc(t *testing.T) {
 	k := newKMS(t, mockstorage.NewMockStoreProvider())
 	t.Run("successfully getting did doc and connection for public did", func(t *testing.T) {
 		doc := createDIDDoc(t, k)
@@ -1125,20 +1114,17 @@ func TestGetDIDDocAndConnection(t *testing.T) {
 		ctx := context{
 			vdriRegistry:    &mockvdri.MockVDRIRegistry{ResolveValue: doc},
 			connectionStore: cStore}
-		didDoc, conn, err := ctx.getDIDDocAndConnection(doc.ID)
+		didDoc, err := ctx.getDIDDoc(doc.ID)
 		require.NoError(t, err)
 		require.NotNil(t, didDoc)
-		require.NotNil(t, conn)
-		require.Equal(t, didDoc.ID, conn.DID)
 	})
 	t.Run("error getting public did doc from resolver", func(t *testing.T) {
 		ctx := context{
 			vdriRegistry: &mockvdri.MockVDRIRegistry{ResolveErr: errors.New("resolver error")}}
-		didDoc, conn, err := ctx.getDIDDocAndConnection("did-id")
+		didDoc, err := ctx.getDIDDoc("did-id")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "resolver error")
 		require.Nil(t, didDoc)
-		require.Nil(t, conn)
 	})
 	t.Run("error saving pub did connection", func(t *testing.T) {
 		doc := createDIDDoc(t, k)
@@ -1157,22 +1143,20 @@ func TestGetDIDDocAndConnection(t *testing.T) {
 		ctx := context{
 			vdriRegistry:    &mockvdri.MockVDRIRegistry{ResolveValue: doc},
 			connectionStore: cStore}
-		didDoc, conn, err := ctx.getDIDDocAndConnection(doc.ID)
+		didDoc, err := ctx.getDIDDoc(doc.ID)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "did error")
 		require.Nil(t, didDoc)
-		require.Nil(t, conn)
 	})
 	t.Run("error creating peer did", func(t *testing.T) {
 		ctx := context{
 			vdriRegistry: &mockvdri.MockVDRIRegistry{CreateErr: errors.New("creator error")},
 			routeSvc:     &mockroute.MockMediatorSvc{},
 		}
-		didDoc, conn, err := ctx.getDIDDocAndConnection("")
+		didDoc, err := ctx.getDIDDoc("")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "creator error")
 		require.Nil(t, didDoc)
-		require.Nil(t, conn)
 	})
 	t.Run("successfully created peer did", func(t *testing.T) {
 		connectionStore, err := newConnectionStore(&protocol.MockProvider{})
@@ -1182,11 +1166,9 @@ func TestGetDIDDocAndConnection(t *testing.T) {
 			connectionStore: connectionStore,
 			routeSvc:        &mockroute.MockMediatorSvc{},
 		}
-		didDoc, conn, err := ctx.getDIDDocAndConnection("")
+		didDoc, err := ctx.getDIDDoc("")
 		require.NoError(t, err)
 		require.NotNil(t, didDoc)
-		require.NotNil(t, conn)
-		require.Equal(t, didDoc.ID, conn.DID)
 	})
 	t.Run("error saving peer did connection", func(t *testing.T) {
 		connectionStore, err := newConnectionStore(&protocol.MockProvider{})
@@ -1205,11 +1187,10 @@ func TestGetDIDDocAndConnection(t *testing.T) {
 			connectionStore: connectionStore,
 			routeSvc:        &mockroute.MockMediatorSvc{},
 		}
-		didDoc, conn, err := ctx.getDIDDocAndConnection("")
+		didDoc, err := ctx.getDIDDoc("")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "did error")
 		require.Nil(t, didDoc)
-		require.Nil(t, conn)
 	})
 
 	t.Run("test create did doc - router service config error", func(t *testing.T) {
@@ -1220,11 +1201,10 @@ func TestGetDIDDocAndConnection(t *testing.T) {
 			connectionStore: connectionStore,
 			routeSvc:        &mockroute.MockMediatorSvc{ConfigErr: errors.New("router config error")},
 		}
-		didDoc, conn, err := ctx.getDIDDocAndConnection("")
+		didDoc, err := ctx.getDIDDoc("")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "did doc - fetch router config")
 		require.Nil(t, didDoc)
-		require.Nil(t, conn)
 	})
 
 	t.Run("test create did doc - router service config error", func(t *testing.T) {
@@ -1235,11 +1215,10 @@ func TestGetDIDDocAndConnection(t *testing.T) {
 			connectionStore: connectionStore,
 			routeSvc:        &mockroute.MockMediatorSvc{AddKeyErr: errors.New("router add key error")},
 		}
-		didDoc, conn, err := ctx.getDIDDocAndConnection("")
+		didDoc, err := ctx.getDIDDoc("")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "did doc - add key to the router")
 		require.Nil(t, didDoc)
-		require.Nil(t, conn)
 	})
 }
 
@@ -1459,12 +1438,13 @@ func createResponse(request *Request, ctx *context) (*Response, error) {
 		return nil, err
 	}
 
-	c := &Connection{
-		DID:    didDoc.ID,
-		DIDDoc: didDoc,
+	//todo 626
+	didDocBytes, err := json.Marshal(didDoc)
+	if err != nil {
+		return nil, err
 	}
 
-	connectionSignature, err := ctx.prepareConnectionSignature(c, request.Thread.PID)
+	_, err = ctx.prepareSignedAttachment(didDocBytes, request.Thread.PID)
 	if err != nil {
 		return nil, err
 	}
@@ -1475,7 +1455,7 @@ func createResponse(request *Request, ctx *context) (*Response, error) {
 		Thread: &decorator.Thread{
 			ID: request.ID,
 		},
-		ConnectionSignature: connectionSignature,
+		// ConnectionSignature: connectionSignature,
 	}
 
 	return response, nil

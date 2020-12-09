@@ -73,6 +73,7 @@ type Request struct {
 	ID         string                   `json:"@id,omitempty"`
 	Label      string                   `json:"label,omitempty"`
 	Connection *Connection              `json:"connection,omitempty"`
+	DID        *did.DID                 `json:"did"`
 	DIDDoc     decorator.AttachmentData `json:"did_doc~attach"`
 	Thread     *decorator.Thread        `json:"~thread,omitempty"`
 }

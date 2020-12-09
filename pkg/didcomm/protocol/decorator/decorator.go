@@ -92,6 +92,8 @@ type AttachmentData struct {
 	// JSON is a directly embedded JSON data, when representing content inline instead of via links,
 	// and when the content is natively conveyable as JSON. Optional.
 	JSON interface{} `json:"json,omitempty"`
+
+	JWS interface{} `json:"jws,omitempty"`
 }
 
 // Fetch this attachment's contents.
@@ -118,7 +120,9 @@ func (d *AttachmentData) Fetch() ([]byte, error) {
 
 	// TODO add support to fetch links
 
-	// TODO add support for jws signatures
+	if d.JWS != nil {
+
+	}
 
 	return nil, errors.New("no contents in this attachment")
 }
