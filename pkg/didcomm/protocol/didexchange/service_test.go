@@ -349,7 +349,7 @@ func TestService_Handle_Invitee(t *testing.T) {
 	didDocBytes, err := json.Marshal(newDidDoc)
 	require.NoError(t, err)
 	//todo 626
-	_, err = ctx.prepareSignedAttachment(didDocBytes, invitation.ID)
+	_, err = ctx.prepareJWS(didDocBytes, invitation.ID)
 	require.NoError(t, err)
 
 	// Bob replies with a Response

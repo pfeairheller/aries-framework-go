@@ -68,7 +68,9 @@ func (c *ConnectionStore) saveDID(did, key string) error {
 
 // SaveDID saves a DID, indexed using the given public keys.
 func (c *ConnectionStore) SaveDID(did string, keys ...string) error {
+	fmt.Println("KEEEEEEYS: ", keys)
 	for _, key := range keys {
+		fmt.Println(fmt.Sprintf("HERE IS DID: %s, HERE IS KEY: %s", did, key))
 		err := c.saveDID(did, key)
 		if err != nil {
 			return fmt.Errorf("saving DID in did map: %w", err)
@@ -100,6 +102,9 @@ func (c *ConnectionStore) SaveDIDFromDoc(doc *diddoc.Doc) error {
 	if err == nil {
 		keys = append(keys, svc.RecipientKeys...)
 	}
+
+	fmt.Println("SVC RECIPIENT KEYS: ", svc.RecipientKeys)
+	fmt.Println("ALL KEYS: ", keys)
 
 	return c.SaveDID(doc.ID, keys...)
 }

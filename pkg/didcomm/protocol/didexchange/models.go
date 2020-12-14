@@ -73,8 +73,8 @@ type Request struct {
 	ID         string                   `json:"@id,omitempty"`
 	Label      string                   `json:"label,omitempty"`
 	Connection *Connection              `json:"connection,omitempty"`
-	DID        *did.DID                 `json:"did"`
-	DIDDoc     decorator.AttachmentData `json:"did_doc~attach"`
+	DID        string                   `json:"did,omitempty"`
+	DIDDoc     decorator.AttachmentData `json:"did_doc~attach,omitempty"`
 	Thread     *decorator.Thread        `json:"~thread,omitempty"`
 }
 
@@ -84,8 +84,8 @@ type Response struct {
 	Type                string                   `json:"@type,omitempty"`
 	ID                  string                   `json:"@id,omitempty"`
 	ConnectionSignature *ConnectionSignature     `json:"connection~sig,omitempty"`
-	DID                 *did.DID                 `json:"did"`
-	DIDDoc              decorator.AttachmentData `json:"did_doc~attach"`
+	DID                 string                   `json:"did,omitempty"`
+	DIDDoc              decorator.AttachmentData `json:"did_doc~attach,omitempty"`
 	Thread              *decorator.Thread        `json:"~thread,omitempty"`
 }
 

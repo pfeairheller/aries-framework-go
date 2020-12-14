@@ -165,6 +165,9 @@ func (s *Service) HandleInbound(msg service.DIDCommMsg, _, _ string) (string, er
 		return "", fmt.Errorf("failed to fetch connection record : %w", err)
 	}
 
+	fmt.Println("looook at the connrecord")
+	fmt.Println(connRecord)
+
 	internalMsg := &message{
 		Msg:           msg.Clone(),
 		ThreadID:      thID,
@@ -571,6 +574,7 @@ func (s *Service) CreateConnection(record *connection.Record, theirDID *did.Doc)
 }
 
 func (s *Service) connectionRecord(msg service.DIDCommMsg) (*connection.Record, error) {
+	fmt.Println(msg.Type())
 	switch msg.Type() {
 	case oobMsgType:
 		return s.oobInvitationMsgRecord(msg)

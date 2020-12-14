@@ -829,10 +829,10 @@ func TestPrepareSignedAttachment(t *testing.T) {
 	newDidDoc, err := ctx.vdriRegistry.Create(testMethod)
 	require.NoError(t, err)
 
-	t.Run("prepare signed attachment", func(t *testing.T) {
+	t.Run("prepare JWS", func(t *testing.T) {
 		didDocBytes, err := json.Marshal(newDidDoc)
 		require.NoError(t, err)
-		signedAttachment, err := ctx.prepareSignedAttachment(didDocBytes, invitation.ID)
+		signedAttachment, err := ctx.prepareJWS(didDocBytes, invitation.ID)
 		require.NoError(t, err)
 		fmt.Println(signedAttachment)
 
@@ -1444,7 +1444,7 @@ func createResponse(request *Request, ctx *context) (*Response, error) {
 		return nil, err
 	}
 
-	_, err = ctx.prepareSignedAttachment(didDocBytes, request.Thread.PID)
+	_, err = ctx.prepareJWS(didDocBytes, request.Thread.PID)
 	if err != nil {
 		return nil, err
 	}

@@ -212,7 +212,6 @@ func (m DIDCommMsgMap) Decode(v interface{}) error {
 	if err != nil {
 		return err
 	}
-
 	return decoder.Decode(m)
 }
 
