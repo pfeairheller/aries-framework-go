@@ -684,7 +684,10 @@ func (s *Service) requestMsgRecord(msg service.DIDCommMsg) (*connection.Record, 
 		return nil, fmt.Errorf("missing parent thread ID on didexchange request with @id=%s", request.ID)
 	}
 
-	d, err := request.DIDDoc.Fetch()
+	someD, _ := json.MarshalIndent(request, " ", " ")
+	fmt.Println(string(someD))
+
+	d, err := request.DIDDoc.Data.Fetch()
 	if err != nil {
 		return nil, fmt.Errorf("extracting did_doc~attach data failed: %s", err)
 	}

@@ -88,6 +88,10 @@ func (o *OutboundDispatcher) Send(msg interface{}, senderVerKey string, des *ser
 			}
 		}
 
+		d, _ := json.MarshalIndent(msg, " ", " ")
+		fmt.Print("here is the message we are passing to Send")
+		fmt.Println(string(d))
+
 		req, err := json.Marshal(msg)
 		if err != nil {
 			return fmt.Errorf("outboundDispatcher.Send: failed marshal to bytes: %w", err)
@@ -105,6 +109,12 @@ func (o *OutboundDispatcher) Send(msg interface{}, senderVerKey string, des *ser
 			return fmt.Errorf("outboundDispatcher.Send: failed to pack msg: %w", err)
 		}
 
+		var someObject interface{}
+		_ = json.Unmarshal(packedMsg, &someObject)
+
+		someD, _ := json.MarshalIndent(someObject, " ", " ")
+		fmt.Println("here is the packed messaage")
+		fmt.Println(string(someD))
 		// set the return route option
 		des.TransportReturnRoute = o.transportReturnRoute
 

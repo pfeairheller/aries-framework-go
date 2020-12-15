@@ -26,7 +26,6 @@ import (
 	"github.com/hyperledger/aries-framework-go/pkg/doc/did"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/jose"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite"
-	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite/ed25519signature2018"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite/jsonwebsignature2020"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/verifier"
 	"github.com/hyperledger/aries-framework-go/pkg/framework/aries/api/vdri"
@@ -386,9 +385,12 @@ func (ctx *context) handleInboundInvitation(invitation *Invitation, thid string,
 		ID:    thid,
 		Label: getLabel(options),
 		DID:   didDoc.ID,
-		DIDDoc: decorator.AttachmentData{
-			Base64: base64.RawStdEncoding.EncodeToString(didDocBytes),
-			JWS:    jws,
+		DIDDoc: decorator.Attachment{
+			MimeType: "application/json",
+			Data: decorator.AttachmentData{
+				Base64: base64.URLEncoding.EncodeToString(didDocBytes),
+				JWS:    jws,
+			},
 		},
 		Thread: &decorator.Thread{
 			PID: pid,
@@ -408,7 +410,7 @@ func (ctx *context) handleInboundInvitation(invitation *Invitation, thid string,
 
 func (ctx *context) handleInboundRequest(request *Request, options *options,
 	connRec *connectionstore.Record) (stateAction, *connectionstore.Record, error) {
-	requestDidDoc, err := ctx.resolveDidDocFromAttachment(request.DIDDoc)
+	requestDidDoc, err := ctx.resolveDidDocFromAttachment(request.DIDDoc.Data)
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolve did doc from exchange request connection: %w", err)
 	}
@@ -441,9 +443,12 @@ func (ctx *context) handleInboundRequest(request *Request, options *options,
 			ID: request.ID,
 		},
 		DID: responseDidDoc.ID,
-		DIDDoc: decorator.AttachmentData{
-			Base64: base64.RawStdEncoding.EncodeToString(responseDidDocBytes),
-			JWS:    jws,
+		DIDDoc: decorator.Attachment{
+			MimeType: "application/json",
+			Data: decorator.AttachmentData{
+				Base64: base64.URLEncoding.EncodeToString(responseDidDocBytes),
+				JWS:    jws,
+			},
 		},
 	}
 
@@ -558,22 +563,6 @@ func (ctx *context) getDIDDoc(pubDID string) (*did.Doc, error) {
 	return newDidDoc, nil
 }
 
-func (ctx *context) resolveDidDocFromConnection(conn *Connection) (*did.Doc, error) {
-	didDoc := conn.DIDDoc
-	if didDoc == nil {
-		// did content was not provided; resolve
-		return ctx.vdriRegistry.Resolve(conn.DID)
-	}
-
-	// store provided did document
-	err := ctx.vdriRegistry.Store(didDoc)
-	if err != nil {
-		return nil, fmt.Errorf("failed to store provided did document: %w", err)
-	}
-
-	return didDoc, nil
-}
-
 func (ctx *context) resolveDidDocFromAttachment(attach decorator.AttachmentData) (*did.Doc, error) {
 	d, err := attach.Fetch()
 	if err != nil {
@@ -671,8 +660,8 @@ func (ctx *context) prepareJWS(didDocBytes []byte,
 
 	return &jwsResponse{
 		Header:    headers,
-		Protected: base64.StdEncoding.EncodeToString(protectedHeaderBytes),
-		Signature: base64.StdEncoding.EncodeToString(jws.Signature()),
+		Protected: base64.URLEncoding.EncodeToString(protectedHeaderBytes),
+		Signature: base64.URLEncoding.EncodeToString(jws.Signature()),
 	}, nil
 }
 
@@ -696,7 +685,7 @@ func (ctx *context) handleInboundResponse(response *Response) (stateAction, *con
 		return nil, nil, fmt.Errorf("get connection record: %w", err)
 	}
 
-	data, err := response.DIDDoc.Fetch()
+	data, err := response.DIDDoc.Data.Fetch()
 
 	jws := &jwsResponse{}
 	err = json.Unmarshal(data, jws)
@@ -704,12 +693,12 @@ func (ctx *context) handleInboundResponse(response *Response) (stateAction, *con
 		return nil, nil, err
 	}
 
-	err = verifyJWS(response.DIDDoc.Base64, jws, connRecord.RecipientKeys[0])
+	err = verifyJWS(response.DIDDoc.Data.Base64, jws, connRecord.RecipientKeys[0])
 	if err != nil {
 		return nil, nil, err
 	}
 
-	responseDidDoc, err := ctx.resolveDidDocFromAttachment(response.DIDDoc)
+	responseDidDoc, err := ctx.resolveDidDocFromAttachment(response.DIDDoc.Data)
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolve did doc from exchange response connection: %w", err)
 	}
@@ -749,7 +738,7 @@ func verifyJWS(payload string, jws *jwsResponse, recipientKeys string) error {
 	suiteVerifier := jsonwebsignature2020.NewPublicKeyVerifier()
 	signatureSuite := jsonwebsignature2020.New(suite.WithVerifier(suiteVerifier))
 
-	payloadBytes, err := base64.RawStdEncoding.DecodeString(payload)
+	payloadBytes, err := base64.URLEncoding.DecodeString(payload)
 	if err != nil {
 		return fmt.Errorf("decode payload: %w", err)
 	}
@@ -763,118 +752,6 @@ func verifyJWS(payload string, jws *jwsResponse, recipientKeys string) error {
 	}
 
 	return nil
-}
-
-// todo - verifySignedAttachment
-// verifySignature verifies connection signature and returns connection.
-func verifySignature(connSignature *ConnectionSignature, recipientKeys string) (*Connection, error) {
-	sigData, err := base64.URLEncoding.DecodeString(connSignature.SignedData)
-	if err != nil {
-		return nil, fmt.Errorf("decode signature data: %w", err)
-	}
-
-	if len(sigData) == 0 {
-		return nil, fmt.Errorf("missing or invalid signature data")
-	}
-
-	signature, err := base64.URLEncoding.DecodeString(connSignature.Signature)
-	if err != nil {
-		return nil, fmt.Errorf("decode signature: %w", err)
-	}
-
-	// The signature data must be used to verify against the invitation's recipientKeys for continuity.
-	pubKey := base58.Decode(recipientKeys)
-
-	// TODO: Replace with signed attachments issue-626
-	suiteVerifier := ed25519signature2018.NewPublicKeyVerifier()
-	signatureSuite := ed25519signature2018.New(suite.WithVerifier(suiteVerifier))
-
-	err = signatureSuite.Verify(&verifier.PublicKey{
-		Type:  kms.ED25519,
-		Value: pubKey},
-		sigData, signature)
-	if err != nil {
-		return nil, fmt.Errorf("verify signature: %w", err)
-	}
-
-	// trimming the timestamp and delimiter - only taking out connection attribute bytes
-	if len(sigData) <= timestamplen {
-		return nil, fmt.Errorf("missing connection attribute bytes")
-	}
-
-	connBytes := sigData[timestamplen:]
-	conn := &Connection{}
-
-	err = json.Unmarshal(connBytes, conn)
-	if err != nil {
-		return nil, fmt.Errorf("JSON unmarshalling of connection: %w", err)
-	}
-
-	return conn, nil
-}
-
-func getEpochTime() int64 {
-	return time.Now().Unix()
-}
-
-func (ctx *context) getVerKey(invitationID string) (string, error) {
-	pubKey, err := ctx.getVerKeyFromOOBInvitation(invitationID)
-	if err != nil && !errors.Is(err, errVerKeyNotFound) {
-		return "", fmt.Errorf("failed to get my verkey from oob invitation: %w", err)
-	}
-
-	if err == nil {
-		return pubKey, nil
-	}
-
-	var invitation Invitation
-	if isDID(invitationID) {
-		invitation = Invitation{ID: invitationID, DID: invitationID}
-	} else {
-		err = ctx.connectionStore.GetInvitation(invitationID, &invitation)
-		if err != nil {
-			return "", fmt.Errorf("get invitation for signature: %w", err)
-		}
-	}
-
-	invPubKey, err := ctx.getInvitationRecipientKey(&invitation)
-	if err != nil {
-		return "", fmt.Errorf("get invitation recipient key: %w", err)
-	}
-
-	return invPubKey, nil
-}
-
-func (ctx *context) getInvitationRecipientKey(invitation *Invitation) (string, error) {
-	if invitation.DID != "" {
-		didDoc, err := ctx.vdriRegistry.Resolve(invitation.DID)
-		if err != nil {
-			return "", fmt.Errorf("get invitation recipient key: %w", err)
-		}
-
-		recKey, err := recipientKey(didDoc)
-		if err != nil {
-			return "", fmt.Errorf("getInvitationRecipientKey: %w", err)
-		}
-
-		return recKey, nil
-	}
-
-	return invitation.RecipientKeys[0], nil
-}
-
-func (ctx *context) getVerKeyFromOOBInvitation(invitationID string) (string, error) {
-	logger.Debugf("invitationID=%s", invitationID)
-
-	var invitation OOBInvitation
-
-	err := ctx.connectionStore.GetInvitation(invitationID, &invitation)
-	if errors.Is(err, storage.ErrDataNotFound) {
-		return "", errVerKeyNotFound
-	}
-
-	if err != nil {
-		return "", fmt.Errorf("failed to load oob invitation: %w", err)
 	}
 
 	if invitation.Type != oobMsgType {
