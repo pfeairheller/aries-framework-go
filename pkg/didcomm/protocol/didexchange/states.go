@@ -11,12 +11,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
-	"strings"
-	"time"
-
 	"github.com/btcsuite/btcutil/base58"
 	"github.com/google/uuid"
+	"log"
+	"strings"
 
 	ariescrypto "github.com/hyperledger/aries-framework-go/pkg/crypto"
 	"github.com/hyperledger/aries-framework-go/pkg/didcomm/common/model"
@@ -752,6 +750,66 @@ func verifyJWS(payload string, jws *jwsResponse, recipientKeys string) error {
 	}
 
 	return nil
+}
+
+func (ctx *context) getVerKey(invitationID string) (string, error) {
+	pubKey, err := ctx.getVerKeyFromOOBInvitation(invitationID)
+	if err != nil && !errors.Is(err, errVerKeyNotFound) {
+		return "", fmt.Errorf("failed to get my verkey from oob invitation: %w", err)
+	}
+
+	if err == nil {
+		return pubKey, nil
+	}
+
+	var invitation Invitation
+	if isDID(invitationID) {
+		invitation = Invitation{ID: invitationID, DID: invitationID}
+	} else {
+		err = ctx.connectionStore.GetInvitation(invitationID, &invitation)
+		if err != nil {
+			return "", fmt.Errorf("get invitation for signature: %w", err)
+		}
+	}
+
+	invPubKey, err := ctx.getInvitationRecipientKey(&invitation)
+	if err != nil {
+		return "", fmt.Errorf("get invitation recipient key: %w", err)
+	}
+
+	return invPubKey, nil
+}
+
+func (ctx *context) getInvitationRecipientKey(invitation *Invitation) (string, error) {
+	if invitation.DID != "" {
+		didDoc, err := ctx.vdriRegistry.Resolve(invitation.DID)
+		if err != nil {
+			return "", fmt.Errorf("get invitation recipient key: %w", err)
+		}
+
+		recKey, err := recipientKey(didDoc)
+		if err != nil {
+			return "", fmt.Errorf("getInvitationRecipientKey: %w", err)
+		}
+
+		return recKey, nil
+	}
+
+	return invitation.RecipientKeys[0], nil
+}
+
+func (ctx *context) getVerKeyFromOOBInvitation(invitationID string) (string, error) {
+	logger.Debugf("invitationID=%s", invitationID)
+
+	var invitation OOBInvitation
+
+	err := ctx.connectionStore.GetInvitation(invitationID, &invitation)
+	if errors.Is(err, storage.ErrDataNotFound) {
+		return "", errVerKeyNotFound
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("failed to load oob invitation: %w", err)
 	}
 
 	if invitation.Type != oobMsgType {
