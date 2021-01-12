@@ -7,14 +7,15 @@ SPDX-License-Identifier: Apache-2.0
 package didexchange
 
 import (
+	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/btcsuite/btcutil/base58"
 	"github.com/google/uuid"
-	"log"
-	"strings"
 
 	ariescrypto "github.com/hyperledger/aries-framework-go/pkg/crypto"
 	"github.com/hyperledger/aries-framework-go/pkg/didcomm/common/model"
@@ -23,9 +24,6 @@ import (
 	"github.com/hyperledger/aries-framework-go/pkg/didcomm/protocol/mediator"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/did"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/jose"
-	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite"
-	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite/jsonwebsignature2020"
-	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/verifier"
 	"github.com/hyperledger/aries-framework-go/pkg/framework/aries/api/vdri"
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
 	"github.com/hyperledger/aries-framework-go/pkg/kms/localkms"
@@ -430,9 +428,6 @@ func (ctx *context) handleInboundRequest(request *Request, options *options,
 		return nil, nil, err
 	}
 
-	fmt.Println("DID KEY FROM HANDLEINBOUND: ", jws.Header)
-
-	log.Println("heyyyyyyyyyyyyyyyyyohhhhhhhhhhhhhhhhhhhhhhh")
 	// prepare the response
 	response := &Response{
 		Type: ResponseMsgType,
@@ -463,11 +458,6 @@ func (ctx *context) handleInboundRequest(request *Request, options *options,
 	if err != nil {
 		return nil, nil, fmt.Errorf("handle inbound request: %w", err)
 	}
-
-	fmt.Println("SENDER VER KEY: ", senderVerKey)
-	d, _ := json.MarshalIndent(response, " ", " ")
-	fmt.Println("RESPONSE: ", string(d))
-	fmt.Println("DESTINATION: ", destination)
 
 	// send exchange response
 	return func() error {
@@ -512,9 +502,6 @@ func (ctx *context) getDIDDoc(pubDID string) (*did.Doc, error) {
 		if err != nil {
 			return nil, fmt.Errorf("resolve public did[%s]: %w", pubDID, err)
 		}
-
-		fmt.Println("HERE IS THE DIDDOC")
-		fmt.Println(didDoc)
 
 		err = ctx.connectionStore.SaveDIDFromDoc(didDoc)
 		if err != nil {
@@ -614,31 +601,23 @@ func (ctx *context) prepareJWS(didDocBytes []byte,
 		return nil, fmt.Errorf("failed to get verkey: %w", err)
 	}
 
-	fmt.Println("Pubkey", pubKey)
-
 	signingKID, err := localkms.CreateKID(base58.Decode(pubKey), kms.ED25519Type)
 	if err != nil {
 		return nil, fmt.Errorf("prepareJWS: failed to generate KID from public key: %w", err)
 	}
-
-	fmt.Println("SIGNING KID: ", signingKID)
 
 	kh, err := ctx.kms.Get(signingKID)
 	if err != nil {
 		return nil, fmt.Errorf("prepareJWS: failed to get key handle: %w", err)
 	}
 
-	fmt.Println("HERE IS KH: ", kh)
-
 	didKey, _ := fingerprint.CreateDIDKey(base58.Decode(pubKey))
-
-	fmt.Println("HERE IS THE DIDKEY: ", didKey)
 
 	headers := map[string]interface{}{
 		jose.HeaderKeyID: didKey,
 	}
 
-	//todo - 626 where to derive Algo from
+
 	protectedHeaders := map[string]interface{}{
 		jose.HeaderAlgorithm: "EdDSA",
 	}
@@ -684,6 +663,9 @@ func (ctx *context) handleInboundResponse(response *Response) (stateAction, *con
 	}
 
 	data, err := response.DIDDoc.Data.Fetch()
+	if err != nil {
+		return nil, nil, err
+	}
 
 	jws := &jwsResponse{}
 	err = json.Unmarshal(data, jws)
@@ -723,7 +705,52 @@ func (ctx *context) handleInboundResponse(response *Response) (stateAction, *con
 	}, connRecord, nil
 }
 
-// verifyJWS verifies payload against JSONWebSignature
+type jwsVerifier struct {
+	pubKey []byte
+}
+
+// Verify will verify a signature.
+func (s *jwsVerifier) Verify(joseHeaders jose.Headers, _, payload, signature []byte) error {
+	alg, ok := joseHeaders.Algorithm()
+	if !ok {
+		return errors.New("alg is not defined")
+	}
+
+	if alg != "EdDSA" {
+		return errors.New("alg is not EdDSA")
+	}
+
+	headerBytes, err := json.Marshal(joseHeaders)
+	if err != nil {
+		return fmt.Errorf("marshal jose headers: %w", err)
+	}
+
+	hBase64 := true
+
+	if b64, ok := joseHeaders[jose.HeaderB64Payload]; ok {
+		if hBase64, ok = b64.(bool); !ok {
+			return errors.New("invalid b64 header")
+		}
+	}
+
+	headersStr := base64.RawURLEncoding.EncodeToString(headerBytes)
+
+	var payloadStr string
+
+	if hBase64 {
+		payloadStr = base64.RawURLEncoding.EncodeToString(payload)
+	} else {
+		payloadStr = string(payload)
+	}
+
+	if ok := ed25519.Verify(s.pubKey, []byte(fmt.Sprintf("%s.%s", headersStr, payloadStr)), signature); !ok {
+		return errors.New("signature doesn't match")
+	}
+
+	return nil
+}
+
+// verifyJWS verifies payload against JSONWebSignature.
 func verifyJWS(payload string, jws *jwsResponse, recipientKeys string) error {
 	signature, err := base64.URLEncoding.DecodeString(jws.Signature)
 	if err != nil {
@@ -733,20 +760,30 @@ func verifyJWS(payload string, jws *jwsResponse, recipientKeys string) error {
 	// The payload must be used to verify against the invitation's recipientKeys for continuity.
 	pubKey := base58.Decode(recipientKeys)
 
-	suiteVerifier := jsonwebsignature2020.NewPublicKeyVerifier()
-	signatureSuite := jsonwebsignature2020.New(suite.WithVerifier(suiteVerifier))
+	jwsVerifier := &jwsVerifier{
+		pubKey: pubKey,
+	}
 
 	payloadBytes, err := base64.URLEncoding.DecodeString(payload)
 	if err != nil {
 		return fmt.Errorf("decode payload: %w", err)
 	}
 
-	err = signatureSuite.Verify(&verifier.PublicKey{
-		Type:  kms.ED25519,
-		Value: pubKey,
-	}, payloadBytes, signature)
+	protectedHeaderBytes, err := base64.URLEncoding.DecodeString(jws.Protected)
 	if err != nil {
-		return fmt.Errorf("verify signature: %w", err)
+		return fmt.Errorf("decode protected headers: %w", err)
+	}
+
+	protectedHeaders := make(map[string]interface{})
+
+	err = json.Unmarshal(protectedHeaderBytes, &protectedHeaders)
+	if err != nil {
+		return fmt.Errorf("unmarshal protected headers: %w", err)
+	}
+
+	err = jwsVerifier.Verify(protectedHeaders, nil, payloadBytes, signature)
+	if err != nil {
+		return fmt.Errorf("verifier verify: %w", err)
 	}
 
 	return nil

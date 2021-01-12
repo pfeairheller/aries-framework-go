@@ -120,9 +120,21 @@ func (d *AttachmentData) Fetch() ([]byte, error) {
 
 	// TODO add support to fetch links
 
-	if d.JWS != nil {
-
-	}
+	// TODO add support to simultaneously fetch JWS and Base64
 
 	return nil, errors.New("no contents in this attachment")
+}
+
+// FetchJWS this attachment's JWS.
+func (d *AttachmentData) FetchJWS() ([]byte, error) {
+	if d.JWS != "" {
+		bits, err := json.Marshal(d.JWS)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal jws contents : %w", err)
+		}
+
+		return bits, nil
+	}
+
+	return nil, errors.New("jws is empty in this attachment")
 }

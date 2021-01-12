@@ -684,25 +684,12 @@ func (s *Service) requestMsgRecord(msg service.DIDCommMsg) (*connection.Record, 
 		return nil, fmt.Errorf("missing parent thread ID on didexchange request with @id=%s", request.ID)
 	}
 
-	someD, _ := json.MarshalIndent(request, " ", " ")
-	fmt.Println(string(someD))
-
-	d, err := request.DIDDoc.Data.Fetch()
-	if err != nil {
-		return nil, fmt.Errorf("extracting did_doc~attach data failed: %s", err)
-	}
-
-	doc, err := did.ParseDocument(d)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshalling did_doc failed: %s", err)
-	}
-
 	connRecord := &connection.Record{
 		TheirLabel:   request.Label,
 		ConnectionID: generateRandomID(),
 		ThreadID:     request.ID,
 		State:        stateNameNull,
-		TheirDID:     doc.ID,
+		TheirDID:     request.DID,
 		InvitationID: invitationID,
 		Namespace:    theirNSPrefix,
 	}
