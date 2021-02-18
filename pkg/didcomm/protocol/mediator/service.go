@@ -119,6 +119,12 @@ type callback struct {
 	err      error
 }
 
+type EventProperties map[string]interface{}
+
+func (r EventProperties) All() map[string]interface{} {
+	return r
+}
+
 type connections interface {
 	GetConnectionIDByDIDs(string, string) (string, error)
 	GetConnectionRecord(string) (*connection.Record, error)
@@ -227,9 +233,14 @@ func (s *Service) sendActionEvent(msg service.DIDCommMsg, myDID, theirDID string
 			theirDID: theirDID,
 		}
 
+		ep := EventProperties{}
+		ep["MyDID"] = myDID
+		ep["TheirDID"] = theirDID
+
 		events <- service.DIDCommAction{
 			ProtocolName: Coordination,
 			Message:      msg,
+			Properties:   ep,
 			Continue: func(args interface{}) {
 				switch o := args.(type) {
 				case Options:
