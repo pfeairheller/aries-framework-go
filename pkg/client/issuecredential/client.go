@@ -142,6 +142,11 @@ func (c *Client) AcceptOffer(piID string) error {
 	return c.service.ActionContinue(piID, nil)
 }
 
+// AcceptOffer is used when the Holder is willing to accept the offer.
+func (c *Client) AcceptOfferWithRequest(piID string, msg *issuecredential.RequestCredential) error {
+	return c.service.ActionContinue(piID, issuecredential.WithRequestCredential(msg))
+}
+
 // DeclineOffer is used when the Holder does not want to accept the offer.
 // NOTE: For async usage.
 func (c *Client) DeclineOffer(piID, reason string) error {
